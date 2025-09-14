@@ -1,18 +1,18 @@
 import logging
-from telegram import ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = "8388176239:AAH2Ktp55xC0Wj10J4s86GjqLz5CcJDcCcU"
 
-def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [['📅 Расписание'], ['🔄 Обновить']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    update.message.reply_text("👋 Привет! Я бот расписания ТО-212", reply_markup=reply_markup)
+    await update.message.reply_text("👋 Привет! Я бот расписания ТО-212", reply_markup=reply_markup)
 
-def schedule_command(update, context):
+async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     schedule_text = (
         "📅 *ТО-212 - Расписание*\n\n"
         "1. Разговоры о важном | 326\n"
@@ -28,28 +28,26 @@ def schedule_command(update, context):
         "2 пара: 09:00-09:45 / 09:50-10:35\n\n"
         "🏢 *Корпуса:* 1, 2, 3, 5, 6"
     )
-    update.message.reply_text(schedule_text, parse_mode='Markdown')
+    await update.message.reply_text(schedule_text, parse_mode='Markdown')
 
-def handle_message(update, context):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.lower()
     if 'расписание' in text or '📅' in text:
-        schedule_command(update, context)
+        await schedule_command(update, context)
     elif 'обновить' in text or '🔄' in text:
-        update.message.reply_text("✅ Расписание обновлено!")
-        schedule_command(update, context)
+        await update.message.reply_text("✅ Расписание обновлено!")
+        await schedule_command(update, context)
     else:
-        update.message.reply_text("Используйте кнопки меню")
+        await update.message.reply_text("Используйте кнопки меню")
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("raspisanie", schedule_command))
-    dp.add_handler(MessageHandler(Filters.text, handle_message))
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("raspisanie", schedule_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("✅ Бот запущен!")
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
