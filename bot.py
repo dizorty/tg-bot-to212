@@ -61,22 +61,3 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await schedule_command(update, context)
     elif 'обновить' in text or '🔄' in text:
         await update_command(update, context)
-    elif 'помощь' in text or '❓' in text:
-        await help_command(update, context)
-    else:
-        await update.message.reply_text("Используйте кнопки или /help")
-
-def main():
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("raspisanie", schedule_command))
-    application.add_handler(CommandHandler("update", update_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("✅ Бот запущен на Render!")
-    application.run_polling()
-
-if __name__ == '__main__':
-    asyncio.run(fetch_schedule())
-    main()
