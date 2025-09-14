@@ -36,11 +36,6 @@ async def fetch_schedule():
         logger.error(f"Ошибка: {e}")
         current_schedule = "❌ Ошибка загрузки расписания"
 
-async def auto_update_schedule():
-    while True:
-        await fetch_schedule()
-        await asyncio.sleep(1800)
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [['📅 Расписание', '🔄 Обновить'], ['❓ Помощь']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -79,15 +74,8 @@ def main():
     application.add_handler(CommandHandler("update", update_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    loop = asyncio.get_event_loop()
-    loop.create_task(auto_update_schedule())
-    
-    if os.environ.get('PORT'):
-        port = int(os.environ.get('PORT', 8443))
-        application.run_webhook(listen="0.0.0.0", port=port, url_path=TOKEN, 
-                              webhook_url=f"https://{os.environ.get('RAILWAY_STATIC_URL', '')}/{TOKEN}")
-    else:
-        application.run_polling()
+    print("✅ Бот запущен на Render!")
+    application.run_polling()
 
 if __name__ == '__main__':
     asyncio.run(fetch_schedule())
