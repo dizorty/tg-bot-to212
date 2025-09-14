@@ -5,44 +5,61 @@ from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 TOKEN = "8388176239:AAH2Ktp55xC0Wj10J4s86GjqLz5CcJDcCcU"
 
 async def parse_schedule_for_date(date_str):
-    """Парсим расписание для конкретной даты с официального сайта"""
+    """Парсим расписание для конкретной даты"""
     try:
-        url = f"https://xn--80a3ae8b.xn--j1al4b.xn--p1ai/?date={date_str}&course=2&group=ТО-212"
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        # Формируем URL с правильными параметрами
+        url = "https://xn--80a3ae8b.xn--j1al4b.xn--p1ai/"
+        params = {
+            'date': date_str,
+            'course': '2',
+            'group': 'ТО-212'
         }
         
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        logger.info(f"Запрос к URL: {url} с параметрами: {params}")
+        
         # Отправляем запрос к сайту
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, params=params, headers=headers, timeout=15)
         response.encoding = 'utf-8'
+        
+        logger.info(f"Статус ответа: {response.status_code}")
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # Ищем расписание
+        # Формируем расписание
         schedule_text = f"📅 *ТО-212 - Расписание на {date_str}*\n\n"
         
-        # Поиск пар
-        lessons = soup.find_all(['div', 'tr', 'p'], class_=lambda x: x and any(word in str(x).lower() for word in ['lesson', 'para', 'pair']))
+        # Простой парсинг - ищем все элементы с текстом, похожим на пары
+        all_text = soup.get_text()
+        lines = [line.strip() for line in all_text.split('\n') if line.strip()]
         
-        if not lessons:
-            # Если не нашли стандартным способом, ищем по структуре
-            schedule_section = soup.find('div', string=lambda x: x and 'ТО-212' in x)
-            if schedule_section:
-                lessons = schedule_section.find_next_siblings(['div', 'p'])
+        # Ищем строки с расписанием
+        schedule_lines = []
+        for line in lines:
+            if any(keyword in line.lower() for keyword in ['разговор', 'история', 'инженер', 'электротех', 'математ', 'физика', 'физкульт', 'программир']):
+                schedule_lines.append(line)
         
-        if lessons:
-            for i, lesson in enumerate(lessons[:8], 1):  # Максимум 8 пар
-                lesson_text = lesson.get_text(strip=True)
-                if lesson_text and len(lesson_text) > 10:  # Фильтруем короткие тексты
-                    schedule_text += f"{i}. {lesson_text}\n"
+        if schedule_lines:
+            for i, line in enumerate(schedule_lines[:6], 1):
+                schedule_text += f"{i}. {line}\n"
         else:
-            # Заглушка если парсинг не сработал
+            # Резервное расписание
             schedule_text += "1. Разговоры о важном | Гоменюк Д.Д. | 326 | 3 корпус\n"
             schedule_text += "2. История | Морева Е.К. | 323 | 3 корпус\n"
             schedule_text += "3. Инженер. графика | Чаплина С.М. | 315 | 1 корпус\n"
@@ -50,38 +67,22 @@ async def parse_schedule_for_date(date_str):
         
         # Добавляем звонки
         schedule_text += "\n🔔 *Расписание звонков:*\n"
+        schedule_text += "1 пара: 08:00 - 08:55\n"
+        schedule_text += "2 пара: 09:00-09:45 / 09:50-10:35\n"
+        schedule_text += "3 пара: 10:50-11:35 / 11:40-12:25\n"
+        schedule_text += "4 пара: 12:45-13:30 / 13:35-14:20\n"
+        schedule_text += "5 пара: 14:30-15:15 / 15:20-16:05\n"
+        schedule_text += "6 пара: 16:15-17:00 / 17:05-17:50\n\n"
         
-        # Пытаемся найти звонки на сайте
-        bells_section = soup.find(string=lambda x: x and 'ЗВОНКИ' in x.upper())
-        if bells_section:
-            bells_table = bells_section.find_next('table')
-            if bells_table:
-                rows = bells_table.find_all('tr')[1:]  # Пропускаем заголовок
-                for row in rows:
-                    cells = row.find_all('td')
-                    if len(cells) >= 2:
-                        bell_num = cells[0].get_text(strip=True)
-                        bell_time = cells[1].get_text(strip=True)
-                        schedule_text += f"{bell_num}: {bell_time}\n"
-        
-        # Стандартное расписание звонков
-        if "звонков" not in schedule_text.lower():
-            schedule_text += "1 пара: 08:00 - 08:55\n"
-            schedule_text += "2 пара: 09:00-09:45 / 09:50-10:35\n"
-            schedule_text += "3 пара: 10:50-11:35 / 11:40-12:25\n"
-            schedule_text += "4 пара: 12:45-13:30 / 13:35-14:20\n"
-            schedule_text += "5 пара: 14:30-15:15 / 15:20-16:05\n"
-            schedule_text += "6 пара: 16:15-17:00 / 17:05-17:50\n"
-        
-        schedule_text += f"\n🏢 *Корпуса:* 1, 2, 3, 5, 6\n"
+        schedule_text += f"🏢 *Корпуса:* 1, 2, 3, 5, 6\n"
         schedule_text += f"🌐 *Источник:* мгтуга.рус\n"
         schedule_text += f"🔄 *Обновлено:* {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         
         return schedule_text
         
     except Exception as e:
-        logger.error(f"Ошибка парсинга даты {date_str}: {e}")
-        # Возвращаем заглушку при ошибке
+        logger.error(f"Ошибка парсинга: {e}")
+        # Резервные данные при ошибке
         error_text = f"📅 *ТО-212 - Расписание на {date_str}*\n\n"
         error_text += "1. Разговоры о важном | Гоменюк Д.Д. | 326 | 3 корпус\n"
         error_text += "2. История | Морева Е.К. | 323 | 3 корпус\n"
@@ -135,7 +136,6 @@ async def show_tomorrow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_date_schedule(update, context, tomorrow)
 
 async def show_day_of_week(update: Update, context: ContextTypes.DEFAULT_TYPE, day_name: str):
-    # Получаем дату следующего указанного дня недели
     today = datetime.now()
     days = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
     target_day = days.index(day_name.lower())
@@ -166,7 +166,7 @@ async def show_bells(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def website_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🌐 *Официальный сайт с расписанием:*\n"
-        "https://мгтуга.рус/?date=ДД.ММ.ГГГГ&course=2&group=ТО-212\n\n"
+        "https://мгтуга.рус/\n\n"
         "📅 *Параметры:*\n"
         "• date=ДД.ММ.ГГГГ - дата\n"
         "• course=2 - курс\n"
@@ -211,13 +211,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Выберите опцию из меню 👆")
 
 def main():
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    print("✅ Бот запущен с поддержкой официального сайта мгтуга.рус!")
-    print("🌐 URL формата: https://мгтуга.рус/?date=ДД.ММ.ГГГГ&course=2&group=ТО-212")
-    application.run_polling()
+    logger.info("Запуск бота...")
+    try:
+        application = Application.builder().token(TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        
+        logger.info("✅ Бот успешно запущен!")
+        logger.info("🌐 URL формата: https://мгтуга.рус/?date=ДД.ММ.ГГГГ&course=2&group=ТО-212")
+        
+        application.run_polling()
+    except Exception as e:
+        logger.error(f"Ошибка запуска бота: {e}")
 
 if __name__ == '__main__':
     main()
